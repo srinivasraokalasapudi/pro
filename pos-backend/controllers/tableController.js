@@ -56,8 +56,8 @@ const updateTable = async (req, res, next) => {
     );
 
     if (!table) {
-      const error = createHttpError(404, "Table not found!");
-      return error;
+    const error = createHttpError(404, "Table not found!");
+    return next(error);
     }
 
     res.status(200).json({success: true, message: "Table updated!", data: table});
