@@ -1,13 +1,11 @@
-const config = require("../config/config");
+const config=require("../config/config");
 
-const globalErrorHandler = (err, req, res, next) => {
-    const statusCode = err.statusCode || 500;
-
-    return res.status(statusCode).json({
-        status: statusCode,
-        message: err.message,
-        errorStack: config.nodeEnv === "development" ? err.stack : ""
-    })
-}
-
-module.exports = globalErrorHandler;
+module.exports=(err,req,res,next)=>{
+  const status=err.statusCode||500;
+  res.status(status).json({
+    success:false,
+    status,
+    message:err.message||"Internal Server Error",
+    ...(config.nodeEnv==="development" && {stack:err.stack})
+  });
+};

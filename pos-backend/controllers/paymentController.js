@@ -4,25 +4,37 @@ const crypto = require("crypto");
 const Payment = require("../models/paymentModel");
 const createHttpError = require("http-errors");
 
-const createOrder = async (req, res, next) => {
-  const razorpay = new Razorpay({
-    key_id: config.razorpayKeyId,
-    key_secret: config.razorpaySecretKey,
-  });
-
+const createOrder = async (req, res) => {
   try {
-    const { amount } = req.body;
-    const options = {
-      amount: amount * 100, // Amount in paisa (1 INR = 100 paisa)
+    console.log("Incoming body:", req.body);
+    console.log("Key ID:", config.razorpayKeyId);
+    console.log("Secret exists:", !!config.razorpaySecretKey);
+
+    const razorpay = new Razorpay({
+      key_id: config.razorpayKeyId,
+      key_secret: config.razorpaySecretKey,
+    });
+
+    const amount = Number(req.body.amount);
+
+    const order = await razorpay.orders.create({
+      amount: Math.round(amount * 100),
       currency: "INR",
       receipt: `receipt_${Date.now()}`,
-    };
+    });
 
-    const order = await razorpay.orders.create(options);
-    res.status(200).json({ success: true, order });
-  } catch (error) {
-    console.log(error);
-    next(error);
+    return res.status(200).json({
+      success: true,
+      order,
+    });
+  } catch (err) {
+    console.error("Create Order Error:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+      stack: err.stack,
+    });
   }
 };
 

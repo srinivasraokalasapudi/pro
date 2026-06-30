@@ -4,37 +4,98 @@ const config = require("./config/config");
 const globalErrorHandler = require("./middlewares/globalErrorHandler");
 const cookieParser = require("cookie-parser");
 const cors = require("cors");
+
 const app = express();
 
-
-const PORT = config.port;
+// =========================
+// Connect Database
+// =========================
 connectDB();
 
+// =========================
 // Middlewares
-app.use(cors({
+// =========================
+app.use(
+  cors({
+    origin: process.env.CLIENT_URL || "http://localhost:5173",
     credentials: true,
-    origin: ['http://localhost:5173']
-}))
-app.use(express.json()); // parse incoming request in json format
-app.use(cookieParser())
+  })
+);
 
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
-// Root Endpoint
-app.get("/", (req,res) => {
-    res.json({message : "Hello from POS Server!"});
-})
+// =========================
+// Health Check
+// =========================
+app.get("/", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "Satya 5-Star Hotel POS API Running Successfully 🚀",
+    version: "1.0.0",
+    timestamp: new Date(),
+  });
+});
 
-// Other Endpoints
+// =========================
+// API Routes
+// =========================
+
+// Authentication
 app.use("/api/user", require("./routes/userRoute"));
+
+// Orders
 app.use("/api/order", require("./routes/orderRoute"));
+
+// Tables
 app.use("/api/table", require("./routes/tableRoute"));
+
+// Payments
 app.use("/api/payment", require("./routes/paymentRoute"));
 
+// Customers
+app.use("/api/customer", require("./routes/customerRoute"));
+
+// Dashboard
+app.use("/api/dashboard", require("./routes/dashboardRoute"));
+
+// Reports
+app.use("/api/report", require("./routes/reportRoutes"));
+
+// Inventory
+app.use("/api/inventory", require("./routes/inventoryRoutes"));
+
+// Staff
+app.use("/api/staff", require("./routes/staffRoutes"));
+
+// Settings
+app.use("/api/settings", require("./routes/settingsRoutes"));
+
+// =========================
+// 404 Route Handler
+// =========================
+app.use("*", (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: `Route ${req.originalUrl} not found`,
+  });
+});
+
+// =========================
 // Global Error Handler
+// =========================
 app.use(globalErrorHandler);
 
+// =========================
+// Start Server
+// =========================
+const PORT = config.port || process.env.PORT || 5000;
 
-// Server
 app.listen(PORT, () => {
-    console.log(`☑️  POS Server is listening on port ${PORT}`);
-})
+  console.log("=======================================");
+  console.log("🚀 Satya 5-Star Hotel POS Backend");
+  console.log(`🌐 Server Running : http://localhost:${PORT}`);
+  console.log("✅ Database Connected");
+  console.log("=======================================");
+});

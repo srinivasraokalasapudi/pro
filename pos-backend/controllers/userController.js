@@ -61,12 +61,12 @@ const login = async (req, res, next) => {
             expiresIn : '1d'
         });
 
-        res.cookie('accessToken', accessToken, {
-            maxAge: 1000 * 60 * 60 *24 * 30,
+        res.cookie("accessToken", accessToken, {
+            maxAge: 1000 * 60 * 60 * 24 * 30,
             httpOnly: true,
             sameSite: "lax",
             secure: false,
-        })
+        });
 
         res.status(200).json({success: true, message: "User login successfully!", 
             data: isUserPresent

@@ -1,76 +1,406 @@
+const mongoose = require("mongoose");
 const createHttpError = require("http-errors");
+
 const Order = require("../models/orderModel");
-const { default: mongoose } = require("mongoose");
+const Table = require("../models/tableModel");
+const Stats = require("../models/statsModel");
+// =======================================
+// Helpers
+// =======================================
+
+const validateObjectId = (id) => {
+  return mongoose.Types.ObjectId.isValid(id);
+};
+
+const getStats = async () => {
+
+    let stats = await Stats.findOne();
+
+    if (!stats) {
+
+        const created = await Stats.create([
+            {
+                totalOrders: 0,
+                totalEarnings: 0,
+            },
+        ]);
+
+        stats = created[0];
+    }
+
+    return stats;
+};
+
+const successResponse = (
+  res,
+  message,
+  data = null,
+  statusCode = 200
+) => {
+  return res.status(statusCode).json({
+    success: true,
+    message,
+    data,
+  });
+};
+
+const errorResponse = (next, status, message) => {
+  return next(createHttpError(status, message));
+};
+// =======================================
+// Add Order
+// =======================================
 
 const addOrder = async (req, res, next) => {
+  
+
   try {
-    const order = new Order(req.body);
-    await order.save();
-    res
-      .status(201)
-      .json({ success: true, message: "Order created!", data: order });
+    
+
+    const {
+      customer,
+      customerDetails,
+      bills,
+      items,
+      table,
+      paymentMethod,
+      paymentData,
+    } = req.body;
+
+    if (!customerDetails)
+      return errorResponse(next, 400, "Customer details are required.");
+
+    if (!bills)
+      return errorResponse(next, 400, "Bill details are required.");
+
+    if (!items || !items.length)
+      return errorResponse(next, 400, "Order items are required.");
+
+    let tableData = null;
+
+    if (table) {
+      tableData = await Table.findById(table);
+
+      if (!tableData) {
+       
+        
+        return errorResponse(next, 404, "Table not found.");
+      }
+
+      if (tableData.status === "Occupied") {
+        
+        
+        return errorResponse(next, 400, "Table already occupied.");
+      }
+    }
+
+    const order = await Order.create(
+      [
+        {
+          customer,
+          customerDetails,
+          bills,
+          items,
+          table,
+          paymentMethod,
+          paymentData,
+          orderStatus: "In Progress",
+        },
+      ],
+      
+    );
+
+    const createdOrder = order[0];
+
+    if (tableData) {
+      tableData.status = "Occupied";
+      tableData.currentOrder = createdOrder._id;
+      await tableData.save();
+    }
+
+    
+    
+
+    return successResponse(
+      res,
+      "Order created successfully.",
+      createdOrder,
+      201
+    );
   } catch (error) {
+    
+    
+
+    console.error(error);
+
     next(error);
   }
 };
+// =======================================
+// Get All Orders
+// =======================================
+
+const getOrders = async (req, res, next) => {
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      search = "",
+      status = "",
+      sort = "desc",
+    } = req.query;
+
+    const query = {};
+
+    // Filter by order status
+    if (status) {
+      query.orderStatus = status;
+    }
+
+    // Search by customer name
+    if (search) {
+      query["customerDetails.name"] = {
+        $regex: search,
+        $options: "i",
+      };
+    }
+
+    const pageNumber = Number(page);
+    const limitNumber = Number(limit);
+
+    const totalOrders = await Order.countDocuments(query);
+
+    const totalPages = Math.ceil(totalOrders / limitNumber);
+
+    const orders = await Order.find(query)
+      .populate("customer")
+      .populate("table")
+      .sort({
+        createdAt: sort === "asc" ? 1 : -1,
+      })
+      .skip((pageNumber - 1) * limitNumber)
+      .limit(limitNumber)
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      currentPage: pageNumber,
+      totalPages,
+      totalOrders,
+      data: orders,
+    });
+  } catch (error) {
+    console.error(error);
+    next(error);
+  }
+};
+// =======================================
+// Get Order By ID
+// =======================================
 
 const getOrderById = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      const error = createHttpError(404, "Invalid id!");
-      return next(error);
+    if (!validateObjectId(id)) {
+      return errorResponse(next, 400, "Invalid Order ID");
+    }
+
+    const order = await Order.findById(id)
+      .populate("customer")
+      .populate("table")
+      .lean();
+
+    if (!order) {
+      return errorResponse(next, 404, "Order not found");
+    }
+
+    return successResponse(
+      res,
+      "Order fetched successfully.",
+      order
+    );
+  } catch (error) {
+    console.error(error);
+    next(error);
+  }
+};
+// =======================================
+// Update Order
+// =======================================
+
+const updateOrder = async (req, res, next) => {
+  
+
+  try {
+    
+
+    const { id } = req.params;
+    const { orderStatus } = req.body;
+
+    if (!validateObjectId(id)) {
+      
+      return errorResponse(next, 400, "Invalid Order ID");
     }
 
     const order = await Order.findById(id);
+
     if (!order) {
-      const error = createHttpError(404, "Order not found!");
-      return next(error);
+      
+      return errorResponse(next, 404, "Order not found");
     }
 
-    res.status(200).json({ success: true, data: order });
-  } catch (error) {
-    next(error);
-  }
-};
+    // Prevent duplicate completion
+    if (
+      order.orderStatus === "Completed" &&
+      orderStatus === "Completed"
+    ) {
+      
 
-const getOrders = async (req, res, next) => {
-  try {
-    const orders = await Order.find().populate("table");
-    res.status(200).json({ data: orders });
-  } catch (error) {
-    next(error);
-  }
-};
+      return res.status(200).json({
+        success: true,
+        message: "Order already completed.",
+      });
+    }
 
-const updateOrder = async (req, res, next) => {
+    order.orderStatus = orderStatus;
+
+    await order.save();
+
+    // ==========================
+    // Completed Order
+    // ==========================
+
+    if (orderStatus === "Completed") {
+
+      const stats = await getStats();
+
+      stats.totalOrders += 1;
+
+      stats.totalEarnings += Number(
+        order.bills?.totalWithTax || 0
+      );
+
+      await stats.save();
+
+      // Release table
+
+      if (order.table) {
+
+        await Table.findByIdAndUpdate(
+          order.table,
+          {
+            status: "Available",
+            currentOrder: null,
+          },
+          
+        );
+
+      }
+
+      // Delete completed order
+
+      await Order.findByIdAndDelete(
+        order._id,
+        
+      );
+
+      
+
+      return res.status(200).json({
+        success: true,
+        message: "Order completed successfully.",
+        stats,
+      });
+
+    }
+
+    
+
+    return res.status(200).json({
+      success: true,
+      message: "Order updated successfully.",
+      data: order,
+    });
+
+  } catch (error) {
+
+    
+
+    console.error(error);
+
+    next(error);
+
+  } finally {
+
+    
+
+  }
+
+};
+// =======================================
+// Delete Order
+// =======================================
+
+const deleteOrder = async (req, res, next) => {
+  
+
   try {
-    const { orderStatus } = req.body;
+    
+
     const { id } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      const error = createHttpError(404, "Invalid id!");
-      return next(error);
+    if (!validateObjectId(id)) {
+      
+      return errorResponse(next, 400, "Invalid Order ID");
     }
 
-    const order = await Order.findByIdAndUpdate(
-      id,
-      { orderStatus },
-      { new: true }
-    );
+    const order = await Order.findById(id);
 
     if (!order) {
-      const error = createHttpError(404, "Order not found!");
-      return next(error);
+      
+      return errorResponse(next, 404, "Order not found");
     }
 
-    res
-      .status(200)
-      .json({ success: true, message: "Order updated", data: order });
+    if (order.table) {
+      await Table.findByIdAndUpdate(
+        order.table,
+        {
+          status: "Available",
+          currentOrder: null,
+        },
+        
+      );
+    }
+
+    await Order.findByIdAndDelete(id);
+
+    
+
+    return res.status(200).json({
+      success: true,
+      message: "Order deleted successfully.",
+    });
+
   } catch (error) {
+
+    
+
+    console.error(error);
+
     next(error);
+
+  } finally {
+
+    
+
   }
 };
 
-module.exports = { addOrder, getOrderById, getOrders, updateOrder };
+module.exports = {
+  addOrder,
+  getOrders,
+  getOrderById,
+  updateOrder,
+  deleteOrder,
+};
